@@ -22,6 +22,10 @@ Then install `md` with uv:
 ^uv tool install mdtex-cli
 ```
 
+Make sure Go's and uv's executable directories are on your `PATH` (usually
+`~/go/bin` and `~/.local/bin`). If you used the old Nushell `alias md`, remove
+it so the installed command takes precedence.
+
 Check setup:
 
 ```nu
@@ -87,6 +91,14 @@ works better than nested powers such as `e^{\eta_{j'}}`.
 ^uv run python -m unittest discover -s tests
 ^uv build
 ```
+
+## Releasing
+
+The first release was uploaded directly to PyPI. To enable automatic publishing
+for future `v*` GitHub tags, register a PyPI trusted publisher for project
+`mdtex-cli`: owner `lucaspon`, repository `md-cli`, workflow `publish.yml`,
+environment `pypi`. The workflow is included but cannot authenticate until
+that registration is complete.
 
 ## License
 
