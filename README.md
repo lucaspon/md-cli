@@ -22,6 +22,12 @@ Then install `md` with uv:
 ^uv tool install mdtex-cli
 ```
 
+PyPI is optional. Install directly from this GitHub repo instead:
+
+```nu
+^uv tool install 'git+https://github.com/lucaspon/md-cli'
+```
+
 Make sure Go's and uv's executable directories are on your `PATH` (usually
 `~/go/bin` and `~/.local/bin`). If you used the old Nushell `alias md`, remove
 it so the installed command takes precedence.
