@@ -200,6 +200,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if not args.doctor:
+        try:
+            options = options_from_args(args)
+        except ValueError as error:
+            parser.error(str(error))
+
+        if args.file not in (None, "-"):
+            path = Path(args.file).expanduser()
+            if not path.is_file():
+                parser.error(f"not a readable file: {path}")
+
     try:
         termtex, mdansi = find_dependencies()
     except RuntimeError as error:
@@ -210,17 +221,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"mdansi: {mdansi}")
         return 0
 
-    try:
-        options = options_from_args(args)
-    except ValueError as error:
-        parser.error(str(error))
-
     if args.file in (None, "-"):
         return render(sys.stdin.buffer, sys.stdout.buffer, options, termtex, mdansi)
-
-    path = Path(args.file).expanduser()
-    if not path.is_file():
-        parser.error(f"not a readable file: {path}")
 
     try:
         with path.open("rb") as source:
