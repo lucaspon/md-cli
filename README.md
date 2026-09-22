@@ -58,6 +58,10 @@ Choose width and theme:
 ^md --width 100 --theme dracula notes.md
 ```
 
+Headings at every level (`#` through `######`) render bold without visible
+hash markers by default, even when output is piped. Use `--color auto` to honor terminal detection and
+`NO_COLOR`, `--color never` to disable styling, or `--plain` for plain text.
+
 Useful options:
 
 ```text
@@ -71,7 +75,7 @@ Useful options:
     --no-code-wrap         Disable code wrapping
     --no-truncate          Disable table-cell truncation
     --table-border STYLE   unicode, ascii, or none
-    --color MODE           always, never, or auto
+    --color MODE           always (default), never, or auto
     --plain                Strip ANSI styling
     --doctor               Check external dependencies
 ```

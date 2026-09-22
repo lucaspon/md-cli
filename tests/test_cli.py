@@ -7,6 +7,7 @@ from mdtex_cli.cli import (
     RenderOptions,
     build_parser,
     find_dependencies,
+    hide_heading_markers,
     mdansi_command,
     options_from_args,
     termtex_command,
@@ -14,6 +15,12 @@ from mdtex_cli.cli import (
 
 
 class CommandTests(unittest.TestCase):
+    def test_headings_use_rich_output_by_default(self) -> None:
+        args = build_parser().parse_args([])
+        options = options_from_args(args)
+        self.assertEqual(options.color, "always")
+        self.assertEqual(mdansi_command("mdansi", options)[3:5], ["--color", "always"])
+
     def test_termtex_defaults(self) -> None:
         options = RenderOptions(width=100)
         self.assertEqual(
@@ -66,6 +73,19 @@ class CommandTests(unittest.TestCase):
         args = build_parser().parse_args(["--width", "10"])
         with self.assertRaisesRegex(ValueError, "at least 20"):
             options_from_args(args)
+
+    def test_only_styled_headings_lose_markers(self) -> None:
+        cases = {
+            b"\x1b[33m\x1b[1m# Heading\x1b[0m\n": b"\x1b[33m\x1b[1mHeading\x1b[0m\n",
+            b"\x1b[35m\x1b[1m\x1b[2m###### Six\x1b[0m\n": b"\x1b[35m\x1b[1m\x1b[2mSix\x1b[0m\n",
+            "\x1b[90m│\x1b[0m \x1b[33m\x1b[1m# Quoted\x1b[0m\n".encode(): "\x1b[90m│\x1b[0m \x1b[33m\x1b[1mQuoted\x1b[0m\n".encode(),
+            b"\x1b[1m# Bold paragraph\x1b[0m\n": b"\x1b[1m# Bold paragraph\x1b[0m\n",
+            b"# Escaped literal\n": b"# Escaped literal\n",
+            "\x1b[2m│ \x1b[0m# code\n".encode(): "\x1b[2m│ \x1b[0m# code\n".encode(),
+        }
+        for source, expected in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(hide_heading_markers(source), expected)
 
 
 class DependencyTests(unittest.TestCase):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -12,13 +13,37 @@ from typing import BinaryIO
 from mdtex_cli import __version__
 
 
+_ANSI_STYLE = rb"(?:\x1b\[[0-9;]*m)"
+_HEADING = re.compile(
+    rb"^(?P<quote>(?:"
+    + _ANSI_STYLE
+    + rb"*\xe2\x94\x82"
+    + _ANSI_STYLE
+    + rb"* ?)*)(?P<style>"
+    + _ANSI_STYLE
+    + rb"+)#{1,6} "
+)
+_FOREGROUND_COLOR = re.compile(rb"\x1b\[(?:3[0-7]|9[0-7]|38;[0-9;]+)m")
+
+
+def hide_heading_markers(line: bytes) -> bytes:
+    """Remove mdansi's visual ATX markers from colored, bold headings."""
+    match = _HEADING.match(line)
+    if match is None:
+        return line
+    style = match.group("style")
+    if b"\x1b[1m" not in style or _FOREGROUND_COLOR.search(style) is None:
+        return line
+    return match.group("quote") + style + line[match.end() :]
+
+
 @dataclass(frozen=True)
 class RenderOptions:
     width: int
     italic: bool = True
     ascii_only: bool = False
     theme: str | None = None
-    color: str = "auto"
+    color: str = "always"
     line_numbers: bool = False
     no_wrap: bool = False
     no_highlight: bool = False
@@ -103,7 +128,7 @@ def render(
         mdansi_process = subprocess.Popen(
             mdansi_command(mdansi, options),
             stdin=termtex_process.stdout,
-            stdout=output,
+            stdout=subprocess.PIPE,
         )
     except BaseException:
         termtex_process.terminate()
@@ -113,14 +138,21 @@ def render(
         termtex_process.stdout.close()
 
     try:
+        assert mdansi_process.stdout is not None
+        for line in mdansi_process.stdout:
+            output.write(hide_heading_markers(line))
+        output.flush()
         mdansi_exit_code = mdansi_process.wait()
         termtex_exit_code = termtex_process.wait()
-    except KeyboardInterrupt:
+    except (BrokenPipeError, KeyboardInterrupt) as error:
         mdansi_process.terminate()
         termtex_process.terminate()
         mdansi_process.wait()
         termtex_process.wait()
-        return 130
+        return 0 if isinstance(error, BrokenPipeError) else 130
+    finally:
+        if mdansi_process.stdout is not None:
+            mdansi_process.stdout.close()
 
     return mdansi_exit_code or termtex_exit_code
 
@@ -138,8 +170,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--color",
         choices=("always", "never", "auto"),
-        default="auto",
-        help="color output mode (default: auto)",
+        default="always",
+        help="color output mode (default: always; auto honors NO_COLOR and TTY detection)",
     )
     parser.add_argument(
         "--table-border",
