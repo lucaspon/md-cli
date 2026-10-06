@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import re
 import shutil
@@ -13,6 +14,77 @@ from pathlib import Path
 
 
 class PipelineIntegrationTests(unittest.TestCase):
+    @unittest.skipUnless(
+        shutil.which("termtex") and shutil.which("mdansi"), "renderers not installed"
+    )
+    def test_latex_table_and_relative_image_with_real_renderers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "chart.png").write_bytes(
+                base64.b64decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII="
+                )
+            )
+            markdown = root / "document.md"
+            markdown.write_text(
+                r"""# Results
+
+\begin{table}[H]
+\caption{Fees}
+\begin{tabular}{l r r}
+\toprule
+\textbf{Metric} & \textbf{Mean} & \textbf{P95} \\
+\midrule
+Total Fees & £59.9M & £61.0M \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\newpage
+![Chart](chart.png){ width=95% }
+
+After chart.
+""",
+                encoding="utf-8",
+            )
+            command = [sys.executable, "-m", "mdtex_cli", "--width", "80"]
+            result = subprocess.run(
+                command + ["--images", "kitty", str(markdown)],
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertIn(b"\x1b_Ga=T", result.stdout)
+            output = result.stdout.decode()
+            self.assertIn("£59.9M", output)
+            self.assertIn("£61.0M", output)
+            self.assertIn("┌", output)
+            self.assertLess(output.index("[image: Chart]"), output.index("\x1b_Ga=T"))
+            self.assertLess(output.index("\x1b_Ga=T"), output.index("After chart."))
+            self.assertNotIn(r"\begin{table}", output)
+            self.assertNotIn(r"\newpage", output)
+            self.assertNotIn("width=95%", output)
+            self.assertNotIn("Preview unavailable", output)
+            self.assertNotIn("MDI", output)
+
+            plain = subprocess.run(
+                command + ["--plain", "--images", "kitty", str(markdown)],
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(plain.returncode, 0, plain.stderr.decode())
+            self.assertIn(b"[image: Chart] (chart.png)", plain.stdout)
+            self.assertNotIn(b"\x1b", plain.stdout)
+
+            narrow = subprocess.run(
+                command + ["--width", "20", str(markdown)],
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(narrow.returncode, 0, narrow.stderr.decode())
+            self.assertIn(b"[image: Chart] (chart.png)", narrow.stdout)
+            self.assertNotIn(b"MDI", narrow.stdout)
+
     def test_file_flows_through_both_renderers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

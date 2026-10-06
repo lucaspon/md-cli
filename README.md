@@ -7,6 +7,9 @@ Render Markdown and LaTeX together in the terminal.
 1. [`termtex`](https://github.com/doug/termtex) expands `$...$` and `$$...$$` math into terminal-friendly Unicode.
 2. [`mdansi`](https://github.com/justinhuangai/mdansi) renders the remaining Markdown with headings, tables, code highlighting, links, and ANSI color.
 
+`md` also converts common LaTeX tables to Markdown and displays local chart
+images in supported terminals.
+
 ## Install
 
 Install the two renderers first:
@@ -77,8 +80,39 @@ Useful options:
     --table-border STYLE   unicode, ascii, or none
     --color MODE           always (default), never, or auto
     --plain                Strip ANSI styling
+    --images MODE          auto (default), never, kitty, or iterm
     --doctor               Check external dependencies
 ```
+
+## Tables and images
+
+Raw LaTeX `table`, `tabular`, and `tabularx` blocks render as terminal tables.
+Captions, column alignment, common text formatting, math, escaped characters,
+and `\multicolumn` are supported. Spanning cells expand to ordinary columns;
+booktabs rules and print layout commands are removed. Unsupported tables stay
+as source text. Code examples stay untouched.
+
+Local Markdown images and single-image LaTeX `figure` blocks display inline
+in Ghostty, Kitty, and iTerm2 3.5+. Paths resolve relative to the Markdown file;
+stdin uses the current directory. Pandoc image attributes such as
+`{ width=95% }` are removed; previews fit the terminal width and height.
+
+PNG previews need no extra tools. PDF previews show the first page and use
+`pdftoppm` from Poppler. Other image formats use ImageMagick. Install optional
+converters on macOS:
+
+```nu
+^brew install poppler imagemagick
+```
+
+`--doctor` reports optional converters too. Missing files or converters produce
+an explanatory placeholder and rendering continues. Remote images are never
+downloaded.
+
+Piped output, `--plain`, unsupported terminals, and sessions inside tmux or
+screen show image captions and paths. Use `--images never` to disable previews.
+`--images kitty` or `--images iterm` forces that graphics protocol, including
+when stdout is redirected; `--plain` always disables graphics.
 
 ## Why external dependencies?
 

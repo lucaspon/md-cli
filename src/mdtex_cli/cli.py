@@ -5,13 +5,15 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
 from mdtex_cli import __version__
-
+from mdtex_cli.document import Image, prepare_document
+from mdtex_cli.images import image_protocol, write_image
 
 _ANSI_STYLE = rb"(?:\x1b\[[0-9;]*m)"
 _HEADING = re.compile(
@@ -51,6 +53,7 @@ class RenderOptions:
     table_border: str = "unicode"
     no_truncate: bool = False
     plain: bool = False
+    images: str = "auto"
 
 
 def terminal_width() -> int:
@@ -116,6 +119,35 @@ def render(
     options: RenderOptions,
     termtex: str,
     mdansi: str,
+    base_dir: Path | None = None,
+) -> int:
+    document, images = prepare_document(source.read().decode("utf-8"))
+    protocol = image_protocol(options.images, output, options.plain)
+    # A temporary input file avoids deadlocks while feeding the two-process pipe.
+    with tempfile.TemporaryFile() as prepared:
+        prepared.write(document.encode("utf-8"))
+        prepared.seek(0)
+        return render_pipeline(
+            prepared,
+            output,
+            options,
+            termtex,
+            mdansi,
+            images,
+            protocol,
+            base_dir if base_dir is not None else Path.cwd(),
+        )
+
+
+def render_pipeline(
+    source: BinaryIO,
+    output: BinaryIO,
+    options: RenderOptions,
+    termtex: str,
+    mdansi: str,
+    images: dict[str, Image],
+    protocol: str | None,
+    base_dir: Path,
 ) -> int:
     termtex_process = subprocess.Popen(
         termtex_command(termtex, options),
@@ -140,7 +172,11 @@ def render(
     try:
         assert mdansi_process.stdout is not None
         for line in mdansi_process.stdout:
-            output.write(hide_heading_markers(line))
+            marker = re.sub(_ANSI_STYLE, b"", line).strip().decode("utf-8")
+            if marker in images:
+                write_image(images[marker], output, protocol, options.width, base_dir)
+            else:
+                output.write(hide_heading_markers(line))
         output.flush()
         mdansi_exit_code = mdansi_process.wait()
         termtex_exit_code = termtex_process.wait()
@@ -200,6 +236,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--plain", action="store_true", help="strip ANSI styling")
     parser.add_argument(
+        "--images",
+        choices=("auto", "never", "kitty", "iterm"),
+        default="auto",
+        help="image previews: auto detects a supported terminal; kitty/iterm force graphics; never shows paths",
+    )
+    parser.add_argument(
         "--doctor", action="store_true", help="check external dependencies and exit"
     )
     parser.add_argument(
@@ -225,6 +267,7 @@ def options_from_args(args: argparse.Namespace) -> RenderOptions:
         table_border=args.table_border,
         no_truncate=args.no_truncate,
         plain=args.plain,
+        images=args.images,
     )
 
 
@@ -251,13 +294,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.doctor:
         print(f"termtex: {termtex}")
         print(f"mdansi: {mdansi}")
+        for name in ("pdftoppm", "magick"):
+            print(
+                f"{name}: {shutil.which(name) or 'not installed (optional image converter)'}"
+            )
         return 0
 
-    if args.file in (None, "-"):
-        return render(sys.stdin.buffer, sys.stdout.buffer, options, termtex, mdansi)
-
     try:
+        if args.file in (None, "-"):
+            return render(sys.stdin.buffer, sys.stdout.buffer, options, termtex, mdansi)
         with path.open("rb") as source:
-            return render(source, sys.stdout.buffer, options, termtex, mdansi)
-    except OSError as error:
+            return render(
+                source,
+                sys.stdout.buffer,
+                options,
+                termtex,
+                mdansi,
+                path.resolve().parent,
+            )
+    except (OSError, UnicodeError) as error:
         parser.exit(2, f"md: {error}\n")
