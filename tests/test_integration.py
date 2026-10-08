@@ -17,6 +17,131 @@ class PipelineIntegrationTests(unittest.TestCase):
     @unittest.skipUnless(
         shutil.which("termtex") and shutil.which("mdansi"), "renderers not installed"
     )
+    def test_wrapped_tables_keep_every_cell_and_respect_width(self) -> None:
+        rows = [
+            ["#", "Request", "Why it matters", "Priority", "Status"],
+            [
+                "1",
+                "Hashed customer ID on every loan plus the sequence number for that customer.",
+                "Measures loan rolling and borrower concentration without losing the final words.",
+                "Critical",
+                "Open",
+            ],
+            [
+                "2",
+                "Transaction-level payments with actual date, amount, and principal and interest split.",
+                "Gives true payment timing and the cash flow schedule needed by the waterfall.",
+                "High",
+                "Open",
+            ],
+        ]
+        source = "| " + " | ".join(rows[0]) + " |\n|---|---|---|---|---|\n"
+        source += "\n".join("| " + " | ".join(row) + " |" for row in rows[1:]) + "\n"
+        normalize = lambda value: "".join(value.split())
+        for width in (40, 80, 120):
+            for border in ("unicode", "ascii", "none"):
+                with self.subTest(width=width, border=border):
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "mdtex_cli",
+                            "--width",
+                            str(width),
+                            "--table-border",
+                            border,
+                            "--plain",
+                        ],
+                        input=source.encode(),
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr.decode())
+                    output = result.stdout.decode()
+                    self.assertNotIn("…", output)
+                    self.assertTrue(
+                        all(len(line) <= width for line in output.splitlines())
+                    )
+                    if border != "none":
+                        actual: list[list[str]] = []
+                        current = [""] * 5
+                        vertical = "│" if border == "unicode" else "|"
+                        for line in output.splitlines():
+                            if line.startswith(vertical):
+                                for index, cell in enumerate(
+                                    line.split(vertical)[1:-1]
+                                ):
+                                    current[index] += normalize(cell)
+                            elif any(current):
+                                actual.append(current)
+                                current = [""] * 5
+                        self.assertEqual(
+                            actual, [[normalize(cell) for cell in row] for row in rows]
+                        )
+                    else:
+                        self.assertNotIn("│", output)
+                        underline = next(
+                            line
+                            for line in output.splitlines()
+                            if re.fullmatch(r"─+(?:  ─+)+", line)
+                        )
+                        spans = [
+                            (match.start(), match.end())
+                            for match in re.finditer(r"─+", underline)
+                        ]
+                        actual = []
+                        current = [""] * 5
+                        for line in output.splitlines():
+                            if line == underline or not line.strip():
+                                if any(current):
+                                    actual.append(current)
+                                    current = [""] * 5
+                            else:
+                                for index, (start, end) in enumerate(spans):
+                                    current[index] += normalize(line[start:end])
+                        if any(current):
+                            actual.append(current)
+                        self.assertEqual(
+                            actual, [[normalize(cell) for cell in row] for row in rows]
+                        )
+
+        truncated = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "mdtex_cli",
+                "--width",
+                "80",
+                "--plain",
+                "--no-table-wrap",
+            ],
+            input=source.encode(),
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(truncated.returncode, 0, truncated.stderr.decode())
+        self.assertIn("…", truncated.stdout.decode())
+        unwrapped = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "mdtex_cli",
+                "--width",
+                "80",
+                "--plain",
+                "--no-table-wrap",
+                "--no-truncate",
+            ],
+            input=source.encode(),
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(unwrapped.returncode, 0, unwrapped.stderr.decode())
+        self.assertIn(rows[1][1], unwrapped.stdout.decode())
+
+    @unittest.skipUnless(
+        shutil.which("termtex") and shutil.which("mdansi"), "renderers not installed"
+    )
     def test_latex_table_and_relative_image_with_real_renderers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -102,7 +227,7 @@ After chart.
                 bin_dir / "mdansi",
                 """
                 import sys
-                assert sys.argv[1:] == ["--width", "88", "--color", "never", "--table-border", "unicode"]
+                assert sys.argv[1:] == ["--width", "88", "--color", "never", "--table-border", "unicode", "--no-truncate"]
                 sys.stdout.buffer.write(b"rendered:\\n" + sys.stdin.buffer.read())
                 """,
             )

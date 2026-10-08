@@ -76,7 +76,8 @@ Useful options:
     --no-wrap              Disable prose wrapping
     --no-highlight         Disable syntax highlighting
     --no-code-wrap         Disable code wrapping
-    --no-truncate          Disable table-cell truncation
+    --no-table-wrap        Truncate table cells instead of wrapping
+    --no-truncate          Preserve full unwrapped cells with --no-table-wrap
     --table-border STYLE   unicode, ascii, or none
     --color MODE           always (default), never, or auto
     --plain                Strip ANSI styling
@@ -85,6 +86,17 @@ Useful options:
 ```
 
 ## Tables and images
+
+Table cells wrap at word boundaries by default, printing their full contents
+within the selected output width. Headers wrap too; short columns stay compact.
+Long identifiers and URLs split across lines when needed. Rows gain separators
+when cells span multiple lines. This applies to both Markdown and LaTeX tables,
+including ASCII and borderless output. Tables with too many columns for the
+available width stack fields vertically.
+
+Use `--no-table-wrap` for the previous truncated display. Combine it with
+`--no-truncate` to print full cells on a single line, even if rows exceed the
+output width. `--no-wrap` controls prose independently of table wrapping.
 
 Raw LaTeX `table`, `tabular`, and `tabularx` blocks render as terminal tables.
 Captions, column alignment, common text formatting, math, escaped characters,
@@ -138,11 +150,10 @@ works better than nested powers such as `e^{\eta_{j'}}`.
 
 ## Releasing
 
-The first release was uploaded directly to PyPI. To enable automatic publishing
-for future `v*` GitHub tags, register a PyPI trusted publisher for project
-`mdtex-cli`: owner `lucaspon`, repository `md-cli`, workflow `publish.yml`,
-environment `pypi`. The workflow is included but cannot authenticate until
-that registration is complete.
+Production releases publish to PyPI through the configured GitHub trusted
+publisher (`publish.yml`, environment `pypi`). Bump the version in
+`pyproject.toml`, `src/mdtex_cli/__init__.py`, and `uv.lock`, then push to `main`.
+After CI passes, create and push the matching `v*` tag to trigger publication.
 
 ## License
 

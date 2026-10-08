@@ -14,6 +14,7 @@ from typing import BinaryIO
 from mdtex_cli import __version__
 from mdtex_cli.document import Image, prepare_document
 from mdtex_cli.images import image_protocol, write_image
+from mdtex_cli.tables import wrap_tables
 
 _ANSI_STYLE = rb"(?:\x1b\[[0-9;]*m)"
 _HEADING = re.compile(
@@ -54,6 +55,7 @@ class RenderOptions:
     no_truncate: bool = False
     plain: bool = False
     images: str = "auto"
+    table_wrap: bool = True
 
 
 def terminal_width() -> int:
@@ -77,7 +79,7 @@ def mdansi_command(executable: str, options: RenderOptions) -> list[str]:
         "--color",
         options.color,
         "--table-border",
-        options.table_border,
+        "unicode" if options.table_wrap else options.table_border,
     ]
     if options.theme is not None:
         command.extend(["--theme", options.theme])
@@ -89,7 +91,7 @@ def mdansi_command(executable: str, options: RenderOptions) -> list[str]:
         command.append("--no-highlight")
     if options.no_code_wrap:
         command.append("--no-code-wrap")
-    if options.no_truncate:
+    if options.table_wrap or options.no_truncate:
         command.append("--no-truncate")
     if options.plain:
         command.append("--plain")
@@ -171,7 +173,12 @@ def render_pipeline(
 
     try:
         assert mdansi_process.stdout is not None
-        for line in mdansi_process.stdout:
+        lines = (
+            wrap_tables(mdansi_process.stdout, options.width, options.table_border)
+            if options.table_wrap
+            else mdansi_process.stdout
+        )
+        for line in lines:
             marker = re.sub(_ANSI_STYLE, b"", line).strip().decode("utf-8")
             if marker in images:
                 write_image(images[marker], output, protocol, options.width, base_dir)
@@ -234,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-truncate", action="store_true", help="disable table-cell truncation"
     )
+    parser.add_argument(
+        "--no-table-wrap",
+        action="store_true",
+        help="truncate table cells instead of wrapping; combine with --no-truncate for full unwrapped rows",
+    )
     parser.add_argument("--plain", action="store_true", help="strip ANSI styling")
     parser.add_argument(
         "--images",
@@ -268,6 +280,7 @@ def options_from_args(args: argparse.Namespace) -> RenderOptions:
         no_truncate=args.no_truncate,
         plain=args.plain,
         images=args.images,
+        table_wrap=not args.no_table_wrap,
     )
 
 

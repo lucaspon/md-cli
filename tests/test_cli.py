@@ -47,6 +47,7 @@ class CommandTests(unittest.TestCase):
             table_border="ascii",
             no_truncate=True,
             plain=True,
+            table_wrap=False,
         )
         self.assertEqual(
             mdansi_command("mdansi", options),
@@ -73,6 +74,18 @@ class CommandTests(unittest.TestCase):
         args = build_parser().parse_args(["--width", "10"])
         with self.assertRaisesRegex(ValueError, "at least 20"):
             options_from_args(args)
+
+    def test_tables_wrap_with_full_content_by_default(self) -> None:
+        options = options_from_args(build_parser().parse_args([]))
+        self.assertTrue(options.table_wrap)
+        self.assertIn("--no-truncate", mdansi_command("mdansi", options))
+
+    def test_table_wrap_is_independent_of_prose_wrapping(self) -> None:
+        options = options_from_args(build_parser().parse_args(["--no-wrap"]))
+        self.assertTrue(options.table_wrap)
+        options = options_from_args(build_parser().parse_args(["--no-table-wrap"]))
+        self.assertFalse(options.table_wrap)
+        self.assertNotIn("--no-truncate", mdansi_command("mdansi", options))
 
     def test_only_styled_headings_lose_markers(self) -> None:
         cases = {
